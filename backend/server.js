@@ -7,6 +7,7 @@ const authRoutes = require("./routes/authRoutes");
 const questionRoutes = require("./routes/questionRoutes");
 const answerRoutes = require("./routes/answerRoutes");
 const bookmarkRoutes = require("./routes/bookmarkRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use("/auth", authRoutes);
 app.use("/questions", questionRoutes);
 app.use("/answers", answerRoutes);
 app.use("/bookmarks", bookmarkRoutes);
+app.use("/categories", categoryRoutes);
 
 // Health check
 app.get("/", (req, res) => {

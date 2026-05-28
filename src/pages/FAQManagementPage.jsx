@@ -1,332 +1,470 @@
 import { useEffect, useState } from "react";
 
 function FAQManagementPage() {
-
   const [questions, setQuestions] =
     useState([]);
+  const [loading, setLoading] =
+    useState(true);
 
-  /* GET LOGGED IN USER */
+  const user = JSON.parse(
+    localStorage.getItem("user") ||
+      "{}"
+  );
 
-  const user =
-    JSON.parse(
-      localStorage.getItem("user") || "{}"
-    );
-
-  /* FETCH QUESTIONS */
-
-  useEffect(() => {
-
-    const token = localStorage.getItem("token");
+  /* Fetch all questions (admin sees everything) */
+  const fetchQuestions = () => {
+    const token =
+      localStorage.getItem("token");
     const headers = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (token)
+      headers[
+        "Authorization"
+      ] = `Bearer ${token}`;
 
+    setLoading(true);
     fetch(
-      "http://localhost:5000/questions",
+      `http://localhost:5000/questions?limit=100`,
       { headers }
     )
-
       .then((res) => res.json())
-
-      .then((data) => {
-
-        setQuestions(data);
-
+      .then((res) => {
+        const list = Array.isArray(res)
+          ? res
+          : res.data || [];
+        setQuestions(list);
       })
-
       .catch((err) => {
-
         console.log(err);
-
+      })
+      .finally(() => {
+        setLoading(false);
       });
+  };
 
+  useEffect(() => {
+    fetchQuestions();
   }, []);
 
-  /* VERIFY AN ANSWER — marks it official, may promote URQ→PAQ→FAQ */
-
+  /* VERIFY ANSWER — admin action */
   const verifyAnswer = async (
     questionId,
     answerId
   ) => {
-
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token");
     if (!token) {
       alert("Please login first");
       return;
     }
 
+    const confirmed =
+      window.confirm(
+        "Verify this answer? It will mark it as official and promote the question to FAQ."
+      );
+    if (!confirmed) return;
+
     try {
-
-      const response =
-        await fetch(
-
-          `http://localhost:5000/answers/${answerId}/verify`,
-
-          {
-            method: "PUT",
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        );
+      const response = await fetch(
+        `http://localhost:5000/answers/${answerId}/verify`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       const data =
         await response.json();
 
-      alert(data.message);
+      if (data.warning) {
+        alert(data.message + "\n" + data.warning);
+      } else {
+        alert(data.message);
+      }
 
-      /* REFRESH LIST */
-      const token2 = localStorage.getItem("token");
-      const headers2 = {};
-      if (token2) headers2["Authorization"] = `Bearer ${token2}`;
-
-      fetch("http://localhost:5000/questions", { headers: headers2 })
-        .then((res) => res.json())
-        .then((data) => setQuestions(data));
-
+      fetchQuestions();
     } catch (error) {
-
       console.log(error);
-
     }
   };
 
-  /* DELETE A QUESTION */
-
+  /* DELETE QUESTION */
   const deleteQuestion = async (
     questionId
   ) => {
-
-    const confirmDelete =
+    const confirmed =
       window.confirm(
-        "Delete this question?"
+        "Delete this question and all its answers? This cannot be undone."
       );
+    if (!confirmed) return;
 
-    if (!confirmDelete) return;
-
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token");
     if (!token) {
       alert("Please login first");
       return;
     }
 
     try {
-
-      const response =
-        await fetch(
-
-          `http://localhost:5000/questions/${questionId}`,
-
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          }
-        );
+      const response = await fetch(
+        `http://localhost:5000/questions/${questionId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       const data =
         await response.json();
-
       alert(data.message);
-
-      /* REFRESH LIST */
-      const token2 = localStorage.getItem("token");
-      const headers2 = {};
-      if (token2) headers2["Authorization"] = `Bearer ${token2}`;
-
-      fetch("http://localhost:5000/questions", { headers: headers2 })
-        .then((res) => res.json())
-        .then((data) => setQuestions(data));
-
+      fetchQuestions();
     } catch (error) {
-
       console.log(error);
-
     }
   };
 
   /* ADMIN PROTECTION */
-
-  if (
-    !user ||
-    user.role !== "admin"
-  ) {
-
+  if (!user || user.role !== "admin") {
     return (
-
       <div className="page-wrapper">
-
         <div className="empty-state">
-
-          <h1>
-            Access Denied
-          </h1>
-
+          <h1>Access Denied</h1>
           <p>
             Only admins can access
             this dashboard.
           </p>
-
         </div>
-
       </div>
-
     );
   }
 
   return (
-
     <div className="page-wrapper">
+      <h1>Admin Moderation Dashboard</h1>
 
-      <h1>
-        Admin Moderation Dashboard
-      </h1>
+      {/* Refresh button */}
+      <button
+        onClick={fetchQuestions}
+        disabled={loading}
+        style={{
+          marginBottom: "1rem",
+          background:
+            "rgba(99,102,241,0.3)",
+          border: "1px solid rgba(255,255,255,0.15)",
+          color: "white",
+          padding: "8px 16px",
+          borderRadius: "8px",
+          cursor:
+            loading
+              ? "not-allowed"
+              : "pointer",
+          opacity: loading
+            ? 0.6
+            : 1,
+        }}
+      >
+        {loading
+          ? "Refreshing..."
+          : "🔄 Refresh"}
+      </button>
 
-      {/* EMPTY STATE */}
-
-      {questions.length === 0 ? (
-
-        <div className="empty-state">
-
-          <h2>
-            No Questions Available
-          </h2>
-
+      {/* Stats summary */}
+      {!loading && (
+        <div
+          style={{
+            display: "flex",
+            gap: "1rem",
+            marginBottom:
+              "1.5rem",
+            flexWrap:
+              "wrap",
+          }}
+        >
+          {[
+            {
+              label: "Total",
+              count: questions.length,
+              color: "#cbd5e1",
+            },
+            {
+              label: "URQ",
+              count: questions.filter(
+                (q) =>
+                  q.state ===
+                  "URQ"
+              ).length,
+              color: "#f87171",
+            },
+            {
+              label: "PAQ",
+              count: questions.filter(
+                (q) =>
+                  q.state ===
+                  "PAQ"
+              ).length,
+              color: "#fbbf24",
+            },
+            {
+              label: "FAQ",
+              count: questions.filter(
+                (q) =>
+                  q.state ===
+                  "FAQ"
+              ).length,
+              color: "#4ade80",
+            },
+            {
+              label: "Flagged",
+              count: questions.filter(
+                (q) =>
+                  q.flaggedForReview
+              ).length,
+              color: "#f97316",
+            },
+          ].map(
+            ({ label, count, color }) => (
+              <div
+                key={label}
+                style={{
+                  background:
+                    "rgba(255,255,255,0.05)",
+                  border:
+                    "1px solid rgba(255,255,255,0.1)",
+                  borderRadius:
+                    "12px",
+                  padding:
+                    "12px 20px",
+                  textAlign:
+                    "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      "1.5rem",
+                    fontWeight:
+                      "bold",
+                    color,
+                  }}
+                >
+                  {count}
+                </div>
+                <div
+                  style={{
+                    fontSize:
+                      "0.75rem",
+                    color:
+                      "#94a3b8",
+                    textTransform:
+                      "uppercase",
+                    letterSpacing:
+                      "0.05em",
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            )
+          )}
         </div>
+      )}
 
+      {loading ? (
+        <div
+          style={{
+            textAlign:
+              "center",
+            padding:
+              "2rem",
+            color: "#cbd5e1",
+          }}
+        >
+          Loading...
+        </div>
+      ) : questions.length === 0 ? (
+        <div className="empty-state">
+          <h2>No Questions</h2>
+        </div>
       ) : (
-
         questions.map((question) => (
-
           <div
             key={question._id}
             className="question-card"
           >
-
-            {/* QUESTION — new backend uses title, state, upvotes */}
-
             <h2>
               {question.title}
             </h2>
-
             <p>
-              {question.description}
+              {
+                question.description
+              }
             </p>
 
-            <p>
-
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#888",
+              }}
+            >
               <strong>
                 Category:
-              </strong>
-
-              {" "}
-
-              {question.category?.name || question.category}
-
+              </strong>{" "}
+              {question.category
+                ?.name || "—"}
             </p>
 
-            <p>
-
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#888",
+              }}
+            >
               <strong>
                 State:
-              </strong>
-
-              {" "}
-
-              {question.state}
-
+              </strong>{" "}
+              <span
+                style={{
+                  color:
+                    question.state ===
+                    "URQ"
+                      ? "#f87171"
+                      : question.state ===
+                        "PAQ"
+                      ? "#fbbf24"
+                      : "#4ade80",
+                  fontWeight:
+                    "bold",
+                }}
+              >
+                {question.state}
+              </span>{" "}
+              {question.flaggedForReview &&
+                " · 🚩 Flagged for review"}
             </p>
 
-            <p>
-
+            <p
+              style={{
+                fontSize: "12px",
+                color: "#888",
+              }}
+            >
               <strong>
                 Upvotes:
-              </strong>
-
-              {" "}
-
-              {question.upvotes || 0}
-
+              </strong>{" "}
+              {question.upvotes ||
+                0}
             </p>
 
-            <h3>
-              Submitted Answers
+            <h3
+              style={{
+                marginTop:
+                  "0.8rem",
+                fontSize:
+                  "0.95rem",
+                color:
+                  "#cbd5e1",
+              }}
+            >
+              Answers (
+              {question.answers
+                ?.length || 0}
+              )
             </h3>
 
-            {/* NO ANSWERS */}
-
             {!question.answers ||
-            question.answers.length === 0 ? (
-
-              <p className="no-answer">
-
-                No answers submitted yet.
-
+            question.answers
+              .length === 0 ? (
+              <p
+                style={{
+                  fontSize:
+                    "0.85rem",
+                  color: "#64748b",
+                }}
+              >
+                No answers yet.
               </p>
-
             ) : (
-
               question.answers.map(
                 (answer) => (
-
                   <div
-                    key={answer._id}
-                    className="answer-card"
+                    key={
+                      answer._id
+                    }
+                    style={{
+                      border:
+                        "1px solid rgba(255,255,255,0.08)",
+                      borderRadius:
+                        "8px",
+                      padding:
+                        "10px",
+                      marginBottom:
+                        "8px",
+                    }}
                   >
-
-                    {/* VERIFIED BADGE — isOfficial instead of verified */}
-
                     {answer.isOfficial && (
-
                       <span
                         className="verified-badge"
+                        style={{
+                          display:
+                            "inline-block",
+                          marginBottom:
+                            "4px",
+                        }}
                       >
-
-                        ✔ Verified (Official)
-
+                        ✔ Official
                       </span>
-
                     )}
-
-                    <p>
-                      {answer.content}
+                    <p
+                      style={{
+                        fontSize:
+                          "0.9rem",
+                      }}
+                    >
+                      {
+                        answer.content
+                      }
                     </p>
-
-                    <p style={{ fontSize: "12px", color: "#888" }}>
-                      Upvotes: {answer.upvotes || 0}
+                    <p
+                      style={{
+                        fontSize:
+                          "12px",
+                        color:
+                          "#888",
+                      }}
+                    >
+                      👍{" "}
+                      {answer.upvotes ||
+                        0}
                     </p>
-
-                    {/* VERIFY BUTTON — only if NOT already official */}
 
                     {!answer.isOfficial && (
-
                       <button
-
-                        className=
-                        "approve-btn"
-
+                        className="approve-btn"
                         onClick={() =>
-
                           verifyAnswer(
                             question._id,
                             answer._id
                           )
-
                         }
+                        style={{
+                          marginTop:
+                            "6px",
+                          fontSize:
+                            "0.8rem",
+                          padding:
+                            "4px 12px",
+                        }}
                       >
-
                         Verify Answer
-
                       </button>
-
                     )}
                   </div>
-
                 )
               )
             )}
-
-            {/* DELETE QUESTION — available to admin */}
 
             <button
               className="delete-btn"
@@ -335,18 +473,17 @@ function FAQManagementPage() {
                   question._id
                 )
               }
+              style={{
+                marginTop:
+                  "0.5rem",
+              }}
             >
               Delete Question
             </button>
-
           </div>
-
         ))
-
       )}
-
     </div>
-
   );
 }
 

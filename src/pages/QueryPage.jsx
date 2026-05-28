@@ -84,24 +84,16 @@ function QueryPage() {
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     fetch(
-      "http://localhost:5000/questions",
+      `http://localhost:5000/questions?state=FAQ&limit=50`,
       { headers }
     )
 
       .then((res) => res.json())
 
-      .then((data) => {
-
-        // New backend: state === "FAQ" means resolved/verified
-        const resolved =
-          data.filter(
-            (q) => q.state === "FAQ"
-          );
-
-        setResolvedQuestions(
-          resolved
-        );
-
+      .then((res) => {
+        // Support paginated { data } and flat array
+        const list = Array.isArray(res) ? res : res.data || [];
+        setResolvedQuestions(list);
       })
 
       .catch((err) => {
@@ -154,11 +146,11 @@ function QueryPage() {
       const headers2 = {};
       if (token2) headers2["Authorization"] = `Bearer ${token2}`;
 
-      fetch("http://localhost:5000/questions", { headers: headers2 })
+      fetch(`http://localhost:5000/questions?state=FAQ&limit=50`, { headers: headers2 })
         .then((res) => res.json())
-        .then((data) => {
-          const resolved = data.filter((q) => q.state === "FAQ");
-          setResolvedQuestions(resolved);
+        .then((res) => {
+          const list = Array.isArray(res) ? res : res.data || [];
+          setResolvedQuestions(list);
         });
 
     } catch (error) {

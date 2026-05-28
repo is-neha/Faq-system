@@ -22,7 +22,7 @@ const buildFuzzyRegex = (search) => {
 // GET /questions — Search + filter by state
 const getQuestions = async (req, res) => {
   try {
-    const { search, state, category, sort } = req.query;
+    const { search, state, category, sort, page = 1, limit = 20 } = req.query;
 
     let query = {};
 
@@ -37,9 +37,14 @@ const getQuestions = async (req, res) => {
       }
     }
 
-    // Filter by lifecycle state
-    if (state && ["URQ", "PAQ", "FAQ"].includes(state)) {
-      query.state = state;
+    // Filter by lifecycle state — supports comma-separated values e.g. "URQ,PAQ"
+    if (state) {
+      const states = state.split(",").map((s) => s.trim().toUpperCase()).filter((s) => ["URQ", "PAQ", "FAQ"].includes(s));
+      if (states.length === 1) {
+        query.state = states[0];
+      } else if (states.length > 1) {
+        query.state = { $in: states };
+      }
     }
 
     if (category) {
@@ -53,12 +58,29 @@ const getQuestions = async (req, res) => {
       sortOption = { views: -1 };
     }
 
-    const questions = await Question.find(query)
-      .populate("author", "name email reputation badges")
-      .populate("category", "name")
-      .sort(sortOption);
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const skip = (pageNum - 1) * limitNum;
 
-    res.json(questions);
+    const [questions, total] = await Promise.all([
+      Question.find(query)
+        .populate("author", "name email reputation badges")
+        .populate("category", "name")
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limitNum),
+      Question.countDocuments(query),
+    ]);
+
+    res.json({
+      data: questions,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
