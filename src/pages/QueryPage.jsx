@@ -64,16 +64,7 @@ const structuredCategories = categoryTemplates.map(cat => {
   };
 });
 
-// 3. Filter entries based on your search bar state
-const filteredFaqs = structuredCategories.map(cat => ({
-  ...cat,
-  faqs: cat.faqs.filter(faq =>
-    faq.question.toLowerCase().includes(search.toLowerCase()) ||
-    faq.answer.toLowerCase().includes(search.toLowerCase())
-  )
-})).filter(cat => cat.faqs.length > 0); // Hide empty blocks dynamically
 
-const noResults = filteredFaqs.length === 0;
 
 /* FETCH COMMUNITY QUESTIONS FROM MONGODB BACKEND */
 
@@ -176,6 +167,17 @@ function QueryPage() {
 
     }
   };
+
+  /* COMPUTE FILTERED FAQs INSIDE COMPONENT — needs access to live `search` state */
+  const filteredFaqs = structuredCategories.map(cat => ({
+    ...cat,
+    faqs: cat.faqs.filter(faq =>
+      faq.question.toLowerCase().includes(search.toLowerCase()) ||
+      faq.answer.toLowerCase().includes(search.toLowerCase())
+    )
+  })).filter(cat => cat.faqs.length > 0);
+
+  const noResults = filteredFaqs.length === 0;
 
   return (
 

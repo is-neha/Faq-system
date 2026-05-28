@@ -9,6 +9,16 @@ const awardReputation = async (userId, points) => {
   await User.findByIdAndUpdate(userId, { $inc: { reputation: points } });
 };
 
+// Build a fuzzy regex from a search query string.
+// Matches all words anywhere in the text, in any order.
+// e.g. "how do I"  →  /how.*do.*i/i
+const buildFuzzyRegex = (search) => {
+  const words = search.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  const pattern = words.map((w) => `(?=.*${w})`).join("") + ".*";
+  return new RegExp(pattern, "i");
+};
+
 // GET /questions — Search + filter by state
 const getQuestions = async (req, res) => {
   try {
@@ -16,9 +26,15 @@ const getQuestions = async (req, res) => {
 
     let query = {};
 
-    // Full-text search
+    // Fuzzy search: matches all words anywhere in title/description, in any order
     if (search) {
-      query.$text = { $search: search };
+      const fuzzyRegex = buildFuzzyRegex(search);
+      if (fuzzyRegex) {
+        query.$or = [
+          { title: fuzzyRegex },
+          { description: fuzzyRegex },
+        ];
+      }
     }
 
     // Filter by lifecycle state

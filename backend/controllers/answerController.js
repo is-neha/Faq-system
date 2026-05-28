@@ -135,6 +135,12 @@ const verifyAnswer = async (req, res) => {
       return res.status(404).json({ message: "Question not found" });
     }
 
+    // Warn if answer hasn't crossed the community-upvote threshold yet
+    const belowThreshold = answer.upvotes < FAQ_UPVOTE_THRESHOLD;
+    const warning = belowThreshold
+      ? `⚠ Answer has only ${answer.upvotes} upvote(s). Threshold is ${FAQ_UPVOTE_THRESHOLD}. Proceeding anyway (admin override).`
+      : null;
+
     // Mark answer as official
     answer.isOfficial = true;
     await answer.save();
@@ -153,6 +159,7 @@ const verifyAnswer = async (req, res) => {
       message: "Answer verified and promoted to FAQ",
       answer,
       questionState: question.state,
+      warning,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
