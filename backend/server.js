@@ -8,6 +8,10 @@ const questionRoutes = require("./routes/questionRoutes");
 const answerRoutes = require("./routes/answerRoutes");
 const bookmarkRoutes = require("./routes/bookmarkRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
+const oaqRoutes = require("./routes/oaqRoutes");
+const aiRoutes = require("./routes/aiRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 const app = express();
 
@@ -24,6 +28,10 @@ app.use("/questions", questionRoutes);
 app.use("/answers", answerRoutes);
 app.use("/bookmarks", bookmarkRoutes);
 app.use("/categories", categoryRoutes);
+app.use("/oaq", oaqRoutes);
+app.use("/ai", aiRoutes);
+app.use("/notifications", notificationRoutes);
+app.use("/reports", reportRoutes);
 
 // Health check
 app.get("/", (req, res) => {

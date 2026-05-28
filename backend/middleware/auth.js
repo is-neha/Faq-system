@@ -43,4 +43,4 @@ const moderatorOrAbove = (req, res, next) => {
   }
 };
 
-module.exports = { auth, adminOnly, moderatorOrAbove };
+module.exports = { auth, adminOnly, moderatorOrAbove, admin: adminOnly };

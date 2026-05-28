@@ -1,162 +1,86 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 function LoginPage() {
-  const [email, setEmail] =
-    useState("");
-  const [password, setPassword] =
-    useState("");
-  const [loading, setLoading] =
-    useState(false);
-
+  const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || "/";
 
-  const handleLogin = async (e) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!email.trim() || !password) {
-      alert("Please enter both email and password.");
-      return;
-    }
-
+    setError("");
     setLoading(true);
-
     try {
-      const response = await fetch(
-        "http://localhost:5000/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            email: email.trim(),
-            password,
-          }),
-        }
-      );
-
-      const data =
-        await response.json();
-
-      if (response.ok) {
-        localStorage.setItem(
-          "token",
-          data.token
-        );
-        localStorage.setItem(
-          "user",
-          JSON.stringify(data.user)
-        );
-
-        /* Navigate based on role */
-        if (
-          data.user.role ===
-          "admin"
-        ) {
-          navigate("/admin");
-        } else {
-          navigate("/");
-        }
+      const data = await login(email, password);
+      if (data.user.role === "admin" || data.user.role === "moderator") {
+        navigate("/admin");
       } else {
-        alert(
-          data.message ||
-            "Login failed"
-        );
+        navigate(from, { replace: true });
       }
-    } catch (error) {
-      console.log(error);
-      alert(
-        "Could not connect to the server."
-      );
+    } catch (err) {
+      setError(err.message || "Invalid credentials");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
-      <form
-        className="login-form"
-        onSubmit={handleLogin}
-      >
-        <h1>Welcome Back</h1>
+    <div className="auth-page">
+      <div className="auth-card">
+        <h1 className="auth-title">Welcome Back</h1>
+        <p className="auth-subtitle">Sign in to Vicharanashala FAQ Portal</p>
 
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) =>
-            setEmail(e.target.value)
-          }
-          autoComplete="email"
-          disabled={loading}
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) =>
-            setPassword(
-              e.target.value
-            )
-          }
-          autoComplete="current-password"
-          disabled={loading}
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-        >
-          {loading
-            ? "Signing in..."
-            : "Sign In"}
-        </button>
-
-        {/* Demo credentials hint */}
-        <div
-          style={{
-            marginTop:
-              "1.2rem",
-            padding:
-              "12px",
-            background:
-              "rgba(99,102,241,0.1)",
-            borderRadius:
-              "8px",
-            fontSize:
-              "0.8rem",
-            color: "#cbd5e1",
-            lineHeight:
-              "1.6",
-          }}
-        >
-          <strong
-            style={{
-              color: "#e0e7ff",
-            }}
-          >
-            Demo credentials:
-          </strong>
-          <br />
-          Admin:{" "}
-          <code>
-            admin@vic.edu
-          </code>{" "}
-          /{" "}
-          <code>admin123</code>
-          <br />
-          Student:{" "}
-          <code>
-            student@vic.edu
-          </code>{" "}
-          /{" "}
-          <code>student123</code>
+        <div className="auth-demo-hint">
+          <strong>Demo:</strong> admin@vic.edu / admin123 &nbsp;|&nbsp; student@vic.edu / student123
         </div>
-      </form>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <div className="auth-field">
+            <label>Email</label>
+            <input
+              type="email"
+              placeholder="you@vic.edu"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={loading}
+              autoFocus
+            />
+          </div>
+          <div className="auth-field">
+            <label>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+            />
+          </div>
+          <button
+            type="submit"
+            className="auth-btn"
+            disabled={loading || !email || !password}
+          >
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+
+        <p className="auth-switch">
+          No account?{" "}
+          <Link to="/register" className="auth-link">Create one</Link>
+        </p>
+      </div>
     </div>
   );
 }
