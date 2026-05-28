@@ -4,14 +4,12 @@ const Vote = require("../models/Vote");
 const Bookmark = require("../models/Bookmark");
 const User = require("../models/User");
 
-// Helper: Award reputation points
 const awardReputation = async (userId, points) => {
   await User.findByIdAndUpdate(userId, { $inc: { reputation: points } });
 };
 
-// Build a fuzzy regex from a search query string.
-// Matches all words anywhere in the text, in any order.
-// e.g. "how do I"  →  /how.*do.*i/i
+// Builds a fuzzy regex: all words must match, in any order, anywhere in text.
+// e.g. "NOC deadline" → /(?=.*NOC)(?=.*deadline).*/i
 const buildFuzzyRegex = (search) => {
   const words = search.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return null;
@@ -19,44 +17,29 @@ const buildFuzzyRegex = (search) => {
   return new RegExp(pattern, "i");
 };
 
-// GET /questions — Search + filter by state
+// GET /questions  — search + filter + paginate
+// Query params: ?search=&state=URQ,PAQ&category=&sort=urgency&page=1&limit=20
 const getQuestions = async (req, res) => {
   try {
     const { search, state, category, sort, page = 1, limit = 20 } = req.query;
-
     let query = {};
 
-    // Fuzzy search: matches all words anywhere in title/description, in any order
     if (search) {
-      const fuzzyRegex = buildFuzzyRegex(search);
-      if (fuzzyRegex) {
-        query.$or = [
-          { title: fuzzyRegex },
-          { description: fuzzyRegex },
-        ];
-      }
+      const fuzzy = buildFuzzyRegex(search);
+      if (fuzzy) query.$or = [{ title: fuzzy }, { description: fuzzy }];
     }
 
-    // Filter by lifecycle state — supports comma-separated values e.g. "URQ,PAQ"
     if (state) {
-      const states = state.split(",").map((s) => s.trim().toUpperCase()).filter((s) => ["URQ", "PAQ", "FAQ"].includes(s));
-      if (states.length === 1) {
-        query.state = states[0];
-      } else if (states.length > 1) {
-        query.state = { $in: states };
-      }
+      const states = state.split(",").map((s) => s.trim().toUpperCase())
+        .filter((s) => ["URQ", "PAQ", "FAQ"].includes(s));
+      query.state = states.length === 1 ? states[0] : { $in: states };
     }
 
-    if (category) {
-      query.category = category;
-    }
+    if (category) query.category = category;
 
     let sortOption = { createdAt: -1 };
-    if (sort === "urgency") {
-      sortOption = { upvotes: -1, createdAt: -1 };
-    } else if (sort === "views") {
-      sortOption = { views: -1 };
-    }
+    if (sort === "urgency") sortOption = { upvotes: -1, createdAt: -1 };
+    else if (sort === "views") sortOption = { views: -1 };
 
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
@@ -66,47 +49,45 @@ const getQuestions = async (req, res) => {
       Question.find(query)
         .populate("author", "name email reputation badges")
         .populate("category", "name")
+        .populate({
+          path: "answers",
+          options: { sort: { upvotes: -1, createdAt: 1 } },
+          populate: { path: "author", select: "name email reputation badges" },
+        })
         .sort(sortOption)
         .skip(skip)
-        .limit(limitNum),
+        .limit(limitNum)
+        .lean(),
       Question.countDocuments(query),
     ]);
 
     res.json({
       data: questions,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum),
-      },
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// GET /questions/:id
+// GET /questions/:id — single question with sorted answers
 const getQuestionById = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id)
       .populate("author", "name email reputation badges")
-      .populate("category", "name");
+      .populate("category", "name")
+      .populate({
+        path: "answers",
+        options: { sort: { upvotes: -1, createdAt: 1 } },
+        populate: { path: "author", select: "name email reputation badges" },
+      })
+      .lean();
 
-    if (!question) {
-      return res.status(404).json({ message: "Question not found" });
-    }
+    if (!question) return res.status(404).json({ message: "Question not found" });
 
-    // Increment view count
-    question.views += 1;
-    await question.save();
+    await Question.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
 
-    // Get answers
-    const answers = await Answer.find({ questionId: question._id })
-      .populate("author", "name email reputation badges")
-      .sort({ upvotes: -1, createdAt: 1 });
-
-    res.json({ question, answers });
+    res.json(question);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -118,17 +99,13 @@ const addQuestion = async (req, res) => {
     const { title, description, category, tags } = req.body;
 
     const question = new Question({
-      title,
-      description,
-      category,
+      title, description, category,
       tags: tags || [],
-      state: "URQ", // Always starts as Unresolved
+      state: "URQ",
       author: req.user._id,
     });
 
     await question.save();
-
-    // Award reputation for asking
     await awardReputation(req.user._id, 5);
 
     await question.populate("author", "name email reputation badges");
@@ -140,34 +117,18 @@ const addQuestion = async (req, res) => {
   }
 };
 
-// PUT /questions/:id/upvote — Upvote question (urgency)
+// PUT /questions/:id/upvote — Urgency signal
 const upvoteQuestion = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id);
-    if (!question) {
-      return res.status(404).json({ message: "Question not found" });
-    }
+    if (!question) return res.status(404).json({ message: "Question not found" });
 
-    // Check for existing vote
-    const existingVote = await Vote.findOne({
-      userId: req.user._id,
-      targetId: question._id,
-      targetType: "Question",
-      voteType: "upvote",
+    const existing = await Vote.findOne({
+      userId: req.user._id, targetId: question._id, targetType: "Question", voteType: "upvote",
     });
+    if (existing) return res.status(400).json({ message: "Already upvoted this question" });
 
-    if (existingVote) {
-      return res.status(400).json({ message: "Already upvoted this question" });
-    }
-
-    // Record the vote
-    await new Vote({
-      userId: req.user._id,
-      targetId: question._id,
-      targetType: "Question",
-      voteType: "upvote",
-    }).save();
-
+    await new Vote({ userId: req.user._id, targetId: question._id, targetType: "Question", voteType: "upvote" }).save();
     question.upvotes += 1;
     await question.save();
 
@@ -181,15 +142,9 @@ const upvoteQuestion = async (req, res) => {
 const deleteQuestion = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id);
-    if (!question) {
-      return res.status(404).json({ message: "Question not found" });
-    }
+    if (!question) return res.status(404).json({ message: "Question not found" });
 
-    // Only author or admin can delete
-    if (
-      question.author.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
+    if (question.author.toString() !== req.user._id.toString() && req.user.role !== "admin") {
       return res.status(403).json({ message: "Not authorized" });
     }
 
@@ -204,7 +159,7 @@ const deleteQuestion = async (req, res) => {
   }
 };
 
-// GET /questions/state/:state — Get questions by lifecycle state
+// GET /questions/state/:state — bulk fetch by state (used internally; prefer ?state= query param)
 const getQuestionsByState = async (req, res) => {
   try {
     const { state } = req.params;
@@ -215,7 +170,13 @@ const getQuestionsByState = async (req, res) => {
     const questions = await Question.find({ state })
       .populate("author", "name email reputation badges")
       .populate("category", "name")
-      .sort({ upvotes: -1, createdAt: -1 });
+      .populate({
+        path: "answers",
+        options: { sort: { upvotes: -1, createdAt: 1 } },
+        populate: { path: "author", select: "name email reputation badges" },
+      })
+      .sort({ upvotes: -1, createdAt: -1 })
+      .lean();
 
     res.json(questions);
   } catch (error) {
@@ -224,10 +185,6 @@ const getQuestionsByState = async (req, res) => {
 };
 
 module.exports = {
-  getQuestions,
-  getQuestionById,
-  addQuestion,
-  upvoteQuestion,
-  deleteQuestion,
-  getQuestionsByState,
+  getQuestions, getQuestionById, addQuestion,
+  upvoteQuestion, deleteQuestion, getQuestionsByState,
 };

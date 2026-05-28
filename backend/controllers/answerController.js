@@ -9,7 +9,7 @@ const awardReputation = async (userId, points) => {
   await User.findByIdAndUpdate(userId, { $inc: { reputation: points } });
 };
 
-// POST /questions/:questionId/answers — Submit an answer (triggers URQ→PAQ)
+// POST /answers/:questionId/answers — Submit an answer (triggers URQ→PAQ)
 const addAnswer = async (req, res) => {
   try {
     const { content } = req.body;
@@ -28,11 +28,14 @@ const addAnswer = async (req, res) => {
 
     await answer.save();
 
+    // Link answer into the question's answers array
+    question.answers.push(answer._id);
+
     // Transition question state: URQ → PAQ
     if (question.state === "URQ") {
       question.state = "PAQ";
-      await question.save();
     }
+    await question.save();
 
     await answer.populate("author", "name email reputation badges");
 

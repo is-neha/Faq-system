@@ -2,27 +2,20 @@ const mongoose = require("mongoose");
 
 const AnswerSchema = new mongoose.Schema(
   {
-    questionId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Question",
-      required: true,
-    },
-    author: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+    questionId: { type: mongoose.Schema.Types.ObjectId, ref: "Question", required: true },
+    author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     content: { type: String, required: true },
-    // Answer upvotes = Accuracy / Verification progress
     upvotes: { type: Number, default: 0 },
     downvotes: { type: Number, default: 0 },
-    // Set to true by Admin upon FAQ promotion
     isOfficial: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-// Text index on answer content for search
-AnswerSchema.index({ content: "text" }, { name: "answer_text_index" });
+// Compound indexes for common query patterns
+AnswerSchema.index({ questionId: 1 });          // fetch answers for a question
+AnswerSchema.index({ questionId: 1, isOfficial: 1 }); // official answers for a question
+AnswerSchema.index({ author: 1 });              // user's answers
+AnswerSchema.index({ upvotes: -1 });            // best answers first
 
 module.exports = mongoose.model("Answer", AnswerSchema);
