@@ -1,5 +1,5 @@
 import {
-  useState,useEffect
+  useState, useEffect
 } from "react";
 
 import {
@@ -13,21 +13,10 @@ import CategoryCard
 from "../components/faq/CategoryCard";
 
 // Importing the flat database JSON array
-import rawDbData from "../data/ProjectDB.faqs.json"; 
+import rawDbData from "../data/ProjectDB.faqs.json";
 
-function QueryPage() {
-
-  const [search, setSearch] =
-    useState("");
-    const [
-  resolvedQuestions,
-
-  setResolvedQuestions
-
-] = useState([]);
-
-  // 1. Structural Map covering all categories shown in the UI image
 // 1. Keep your templates exactly as they are
+// 1. Structural Map covering all categories shown in the UI
 // 1. Expanded layout tracking exactly 12 specific operational categories
 const categoryTemplates = [
   { id: 1, title: "Onboarding & Admin", sub: "1. About the internship", sections: ["1"] },
@@ -45,23 +34,23 @@ const categoryTemplates = [
   { id: 13, title: "Team Formation", sub: "13. Team Formation & Grouping", sections: ["13"] }
 ];
 
-// 2. Exact RegEx parsing to strictly assign items to these 12 columns
+// 2. Exact RegEx parsing to strictly assign items to these columns
 const structuredCategories = categoryTemplates.map(cat => {
-  
+
   const matchedItems = rawDbData.filter(item => {
     const questionText = item.question?.trim() || "";
 
     // Strictly captures the leading digit cluster before the first decimal point
     const match = questionText.match(/^(\d+)\./);
-    
+
     if (match) {
       const extractedSection = match[1];
       return cat.sections.includes(extractedSection);
     }
-    
+
     return false;
   });
-  
+
 
   return {
     id: cat.id,
@@ -75,49 +64,118 @@ const structuredCategories = categoryTemplates.map(cat => {
   };
 });
 
-  // 3. Filter entries based on your search bar state
-  const filteredFaqs = structuredCategories.map(cat => ({
-    ...cat,
-    faqs: cat.faqs.filter(faq =>
-      faq.question.toLowerCase().includes(search.toLowerCase()) ||
-      faq.answer.toLowerCase().includes(search.toLowerCase())
-    )
-  })).filter(cat => cat.faqs.length > 0); // Hide empty blocks dynamically
-
-  const noResults = filteredFaqs.length === 0;
-  /* FETCH RESOLVED QUESTIONS */
-
-useEffect(() => {
-
-  fetch(
-    "http://localhost:5000/questions"
+// 3. Filter entries based on your search bar state
+const filteredFaqs = structuredCategories.map(cat => ({
+  ...cat,
+  faqs: cat.faqs.filter(faq =>
+    faq.question.toLowerCase().includes(search.toLowerCase()) ||
+    faq.answer.toLowerCase().includes(search.toLowerCase())
   )
+})).filter(cat => cat.faqs.length > 0); // Hide empty blocks dynamically
 
-    .then((res) => res.json())
+const noResults = filteredFaqs.length === 0;
 
-    .then((data) => {
+/* FETCH COMMUNITY QUESTIONS FROM MONGODB BACKEND */
 
-      const resolved =
-        data.filter(
-          (q) =>
-            q.status === "resolved"
+function QueryPage() {
+
+  const [search, setSearch] =
+    useState("");
+  const [
+    resolvedQuestions,
+    setResolvedQuestions
+  ] = useState([]);
+
+  useEffect(() => {
+
+    const token = localStorage.getItem("token");
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch(
+      "http://localhost:5000/questions",
+      { headers }
+    )
+
+      .then((res) => res.json())
+
+      .then((data) => {
+
+        // New backend: state === "FAQ" means resolved/verified
+        const resolved =
+          data.filter(
+            (q) => q.state === "FAQ"
+          );
+
+        setResolvedQuestions(
+          resolved
         );
 
-      setResolvedQuestions(
-        resolved
-      );
+      })
 
-    })
+      .catch((err) => {
 
-    .catch((err) => {
+        console.log(err);
 
-      console.log(err);
+      });
 
-    });
+  }, []);
 
-}, []);
+  /* UPVOTE AN ANSWER */
 
-  
+  const handleUpvote = async (answerId) => {
+
+    const token = localStorage.getItem("token");
+    const user = JSON.parse(
+      localStorage.getItem("user") || "{}"
+    );
+
+    if (!token || !user._id) {
+      alert("Please login first");
+      return;
+    }
+
+    try {
+
+      const response =
+        await fetch(
+
+          `http://localhost:5000/answers/${answerId}/upvote`,
+
+          {
+            method: "PUT",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+      const data =
+        await response.json();
+
+      alert(data.message);
+
+      /* REFRESH TO SHOW UPDATED UPVOTE COUNT */
+      const token2 = localStorage.getItem("token");
+      const headers2 = {};
+      if (token2) headers2["Authorization"] = `Bearer ${token2}`;
+
+      fetch("http://localhost:5000/questions", { headers: headers2 })
+        .then((res) => res.json())
+        .then((data) => {
+          const resolved = data.filter((q) => q.state === "FAQ");
+          setResolvedQuestions(resolved);
+        });
+
+    } catch (error) {
+
+      console.log(error);
+
+    }
+  };
 
   return (
 
@@ -131,7 +189,6 @@ useEffect(() => {
           <SearchBar search={search} setSearch={setSearch} />
           <Link to="/post-query" className="ask-question-btn">
             + Ask Question
-
           </Link>
         </div>
       </div>
@@ -144,7 +201,6 @@ useEffect(() => {
         </div>
         <Link to="/question" className="resolve-btn">
           Resolve Questions
-
         </Link>
       </div>
 
@@ -154,7 +210,7 @@ useEffect(() => {
           {filteredFaqs.map((catItem) => (
             <CategoryCard
               key={catItem.id}
-              category={catItem} 
+              category={catItem}
             />
           ))}
         </div>
@@ -164,151 +220,70 @@ useEffect(() => {
           <p>Can't find what you're looking for?</p>
           <Link to="/post-query" className="ask-btn">
             Ask a New Question
-
           </Link>
         </div>
       )}
 
-      {/* Resolved Questions Section */}
-      {/* Resolved Questions Section */}
+      {/* Resolved Community Questions Section */}
+      {resolvedQuestions.length > 0 && (
+        <div className="resolved-section">
+          <h2>
+            Resolved Community Questions
+          </h2>
 
-{resolvedQuestions.length > 0 && (
+          {resolvedQuestions.map(
+            (question) => (
+              <div
+                key={question._id}
+                className="resolved-card"
+              >
+                <h3>
+                  {question.title}
+                </h3>
+                <p>
+                  {question.description}
+                </p>
+                <p style={{ fontSize: "12px", color: "#888" }}>
+                  Upvotes: {question.upvotes || 0}
+                </p>
 
-  <div className="resolved-section">
+                {/* ADMIN VERIFIED ANSWERS (isOfficial === true) */}
+                {question.answers?.map(
+                  (answer) =>
+                    answer.isOfficial && (
+                      <div
+                        key={answer._id}
+                        className="answer-card"
+                      >
+                        <span className="verified-badge">
+                          ✔ Admin Verified
+                        </span>
+                        <p>
+                          {answer.content}
+                        </p>
 
-    <h2>
-      Resolved Community Questions
-    </h2>
-
-    {resolvedQuestions.map(
-      (question) => (
-
-        <div
-          key={question.id}
-          className="resolved-card"
-        >
-
-          <h3>
-            {question.question}
-          </h3>
-
-          <p>
-            {question.description}
-          </p>
-
-          {/* VERIFIED ANSWERS */}
-
-          {question.answers &&
-            question.answers.map(
-
-              (answer) =>
-
-                answer.verified && (
-
-                  <div
-                    key={answer.id}
-                    className="answer-card"
-                  >
-
-                    <span className="verified-badge">
-
-                      ✔ Admin Verified
-
-                    </span>
-
-                    <p>
-                      {answer.text}
-                    </p>
-
-                  </div>
-
-                )
+                        {/* UPVOTE BUTTON — targets the answer, not the question */}
+                        <button
+                          className="upvote-btn"
+                          onClick={() =>
+                            handleUpvote(
+                              answer._id
+                            )
+                          }
+                        >
+                          👍 Upvote
+                          ({answer.upvotes || 0})
+                        </button>
+                      </div>
+                    )
+                )}
+              </div>
             )
-          }
-
-          {/* UPVOTE BUTTON */}
-
-          <button
-
-            className="upvote-btn"
-
-            onClick={async () => {
-
-              const user =
-                JSON.parse(
-                  localStorage.getItem(
-                    "user"
-                  )
-                );
-
-              if(!user){
-
-                alert(
-                  "Please login first"
-                );
-
-                return;
-              }
-
-              try {
-
-                const response =
-                  await fetch(
-
-                    `http://localhost:5000/questions/${question.id}/upvote`,
-
-                    {
-                      method:"PUT",
-
-                      headers:{
-                        "Content-Type":
-                        "application/json"
-                      },
-
-                      body: JSON.stringify({
-
-                        username:
-                        user.username
-
-                      })
-                    }
-                  );
-
-                const data =
-                  await response.json();
-
-                alert(
-                  data.message
-                );
-
-                window.location.reload();
-
-              } catch(error){
-
-                console.log(error);
-
-              }
-
-            }}
-
-          >
-
-            👍 Upvote
-            ({question.upvotes || 0})
-
-          </button>
-
+          )}
         </div>
-
-      )
-    )}
-
-  </div>
-
-)}
+      )}
 
     </div>
-
   );
 }
 

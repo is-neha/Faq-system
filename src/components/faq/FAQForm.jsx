@@ -8,49 +8,38 @@ function FAQForm() {
 
   const navigate = useNavigate();
 
- const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  e.preventDefault();
-
-  if(
-    !question ||
-    !category ||
-    !description
-  ){
-
-    alert("Fill all fields");
-    return;
-  }
-
-  const response = await fetch(
-    "http://localhost:5000/questions",
-
-    {
-      method:"POST",
-
-      headers:{
-        "Content-Type":
-        "application/json"
-      },
-
-      body: JSON.stringify({
-
-        question,
-        category,
-        description
-
-      })
+    if (!question || !category || !description) {
+      alert("Fill all fields");
+      return;
     }
-  );
 
-  const data =
-    await response.json();
+    const token = localStorage.getItem("token");
 
-  alert(data.message);
+    const response = await fetch(
+      "http://localhost:5000/questions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          title: question,
+          category,
+          description
+        })
+      }
+    );
 
-  navigate("/");
+    const data = await response.json();
 
-};
+    alert(data.message || data.error || "Question submitted!");
+
+    navigate("/");
+  };
 
   return (
     <div className="form-container">
@@ -106,7 +95,6 @@ function FAQForm() {
         <button type="submit">
           Submit Question
         </button>
-
       </form>
     </div>
   );

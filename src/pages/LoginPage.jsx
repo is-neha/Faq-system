@@ -27,10 +27,9 @@ function LoginPage() {
         },
 
         body: JSON.stringify({
-
-          username,
+          // New backend uses email, not username
+          email: username,
           password
-
         })
       }
     );
@@ -39,17 +38,15 @@ function LoginPage() {
       await response.json();
 
     if(response.ok){
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify(data)
-      );
+      // New backend returns { token, user }
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
 
       alert("Login Successful");
 
       /* REDIRECT BASED ON ROLE */
 
-      if(data.role === "admin"){
+      if(data.user.role === "admin"){
 
         navigate("/admin");
 
@@ -77,8 +74,7 @@ function LoginPage() {
 
         <input
           type="text"
-          placeholder="Username"
-
+          placeholder="Email"
           value={username}
 
           onChange={(e)=>
@@ -104,14 +100,12 @@ function LoginPage() {
         <button type="submit">
           Login
         </button>
-        <p>For admin username:"admin" pass:"admin123"</p>
-        <p>For student username:"student" pass:"student123"</p>
+        <p>For admin email:"admin@vic.edu" pass:"admin123"</p>
+        <p>For student email:"student@vic.edu" pass:"student123"</p>
 
       </form>
-
     </div>
   );
 }
 
 export default LoginPage;
-

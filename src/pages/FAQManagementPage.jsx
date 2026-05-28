@@ -9,15 +9,20 @@ function FAQManagementPage() {
 
   const user =
     JSON.parse(
-      localStorage.getItem("user")
+      localStorage.getItem("user") || "{}"
     );
 
   /* FETCH QUESTIONS */
 
   useEffect(() => {
 
+    const token = localStorage.getItem("token");
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     fetch(
-      "http://localhost:5000/questions"
+      "http://localhost:5000/questions",
+      { headers }
     )
 
       .then((res) => res.json())
@@ -36,24 +41,32 @@ function FAQManagementPage() {
 
   }, []);
 
-  /* VERIFY ANSWER */
+  /* VERIFY AN ANSWER — marks it official, may promote URQ→PAQ→FAQ */
 
   const verifyAnswer = async (
     questionId,
     answerId
   ) => {
 
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login first");
+      return;
+    }
+
     try {
 
       const response =
         await fetch(
 
-          `http://localhost:5000/questions/${questionId}/verify/${answerId}`,
+          `http://localhost:5000/answers/${answerId}/verify`,
 
           {
-            method: "PUT"
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
           }
-
         );
 
       const data =
@@ -61,7 +74,69 @@ function FAQManagementPage() {
 
       alert(data.message);
 
-      window.location.reload();
+      /* REFRESH LIST */
+      const token2 = localStorage.getItem("token");
+      const headers2 = {};
+      if (token2) headers2["Authorization"] = `Bearer ${token2}`;
+
+      fetch("http://localhost:5000/questions", { headers: headers2 })
+        .then((res) => res.json())
+        .then((data) => setQuestions(data));
+
+    } catch (error) {
+
+      console.log(error);
+
+    }
+  };
+
+  /* DELETE A QUESTION */
+
+  const deleteQuestion = async (
+    questionId
+  ) => {
+
+    const confirmDelete =
+      window.confirm(
+        "Delete this question?"
+      );
+
+    if (!confirmDelete) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login first");
+      return;
+    }
+
+    try {
+
+      const response =
+        await fetch(
+
+          `http://localhost:5000/questions/${questionId}`,
+
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+      const data =
+        await response.json();
+
+      alert(data.message);
+
+      /* REFRESH LIST */
+      const token2 = localStorage.getItem("token");
+      const headers2 = {};
+      if (token2) headers2["Authorization"] = `Bearer ${token2}`;
+
+      fetch("http://localhost:5000/questions", { headers: headers2 })
+        .then((res) => res.json())
+        .then((data) => setQuestions(data));
 
     } catch (error) {
 
@@ -99,42 +174,6 @@ function FAQManagementPage() {
     );
   }
 
-  const deleteQuestion = async (
-  questionId
-) => {
-
-  const confirmDelete =
-    window.confirm(
-      "Delete this question?"
-    );
-
-  if(!confirmDelete) return;
-
-  try {
-
-    const response =
-      await fetch(
-
-        `http://localhost:5000/questions/${questionId}`,
-
-        {
-          method:"DELETE"
-        }
-      );
-
-    const data =
-      await response.json();
-
-    alert(data.message);
-
-    window.location.reload();
-
-  } catch(error){
-
-    console.log(error);
-
-  }
-};
   return (
 
     <div className="page-wrapper">
@@ -160,14 +199,14 @@ function FAQManagementPage() {
         questions.map((question) => (
 
           <div
-            key={question.id}
+            key={question._id}
             className="question-card"
           >
 
-            {/* QUESTION */}
+            {/* QUESTION — new backend uses title, state, upvotes */}
 
             <h2>
-              {question.question}
+              {question.title}
             </h2>
 
             <p>
@@ -182,19 +221,31 @@ function FAQManagementPage() {
 
               {" "}
 
-              {question.category}
+              {question.category?.name || question.category}
 
             </p>
 
             <p>
 
               <strong>
-                Status:
+                State:
               </strong>
 
               {" "}
 
-              {question.status}
+              {question.state}
+
+            </p>
+
+            <p>
+
+              <strong>
+                Upvotes:
+              </strong>
+
+              {" "}
+
+              {question.upvotes || 0}
 
             </p>
 
@@ -219,31 +270,35 @@ function FAQManagementPage() {
                 (answer) => (
 
                   <div
-                    key={answer.id}
+                    key={answer._id}
                     className="answer-card"
                   >
 
-                    {/* VERIFIED BADGE */}
+                    {/* VERIFIED BADGE — isOfficial instead of verified */}
 
-                    {answer.verified && (
+                    {answer.isOfficial && (
 
                       <span
                         className="verified-badge"
                       >
 
-                        ✔ Verified
+                        ✔ Verified (Official)
 
                       </span>
 
                     )}
 
                     <p>
-                      {answer.text}
+                      {answer.content}
                     </p>
 
-                    {/* VERIFY BUTTON */}
+                    <p style={{ fontSize: "12px", color: "#888" }}>
+                      Upvotes: {answer.upvotes || 0}
+                    </p>
 
-                    {!answer.verified && (
+                    {/* VERIFY BUTTON — only if NOT already official */}
+
+                    {!answer.isOfficial && (
 
                       <button
 
@@ -253,8 +308,8 @@ function FAQManagementPage() {
                         onClick={() =>
 
                           verifyAnswer(
-                            question.id,
-                            answer.id
+                            question._id,
+                            answer._id
                           )
 
                         }
@@ -265,21 +320,24 @@ function FAQManagementPage() {
                       </button>
 
                     )}
-                    <button
-
-                className="delete-btn"
-                onClick={() =>
-                  deleteQuestion(question.id)
-                }
-              >
-                Delete Question
-              </button>
-
                   </div>
 
                 )
               )
             )}
+
+            {/* DELETE QUESTION — available to admin */}
+
+            <button
+              className="delete-btn"
+              onClick={() =>
+                deleteQuestion(
+                  question._id
+                )
+              }
+            >
+              Delete Question
+            </button>
 
           </div>
 

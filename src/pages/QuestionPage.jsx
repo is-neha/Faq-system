@@ -11,12 +11,17 @@ function QuestionPage() {
   const [answerText, setAnswerText] =
     useState({});
 
-  /* FETCH QUESTIONS */
+  /* FETCH QUESTIONS — shows only URQ + PAQ (not yet FAQ) */
 
   useEffect(() => {
 
+    const token = localStorage.getItem("token");
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     fetch(
-      "http://localhost:5000/questions"
+      "http://localhost:5000/questions",
+      { headers }
     )
 
       .then((res) => res.json())
@@ -35,18 +40,14 @@ function QuestionPage() {
 
   }, []);
 
-  /* SHOW ONLY QUESTIONS
-     WITHOUT VERIFIED ANSWERS */
+  /* SHOW ONLY URQ + PAQ — questions that still need answers */
+  // (FAQ questions are already resolved, no need to show here)
 
   const unresolvedQuestions =
     questions.filter((q) => {
 
-      const hasVerifiedAnswer =
-        q.answers?.some(
-          (a) => a.verified
-        );
+      return q.state === "URQ" || q.state === "PAQ";
 
-      return !hasVerifiedAnswer;
     });
 
   /* SUBMIT ANSWER */
@@ -61,24 +62,31 @@ function QuestionPage() {
       return;
     }
 
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login first");
+      return;
+    }
+
     try {
 
       const response =
         await fetch(
 
-          `http://localhost:5000/questions/${questionId}/answer`,
+          `http://localhost:5000/answers/${questionId}/answers`,
 
           {
             method: "POST",
 
             headers: {
               "Content-Type":
-                "application/json"
+                "application/json",
+              Authorization: `Bearer ${token}`
             },
 
             body: JSON.stringify({
 
-              text:
+              content:
                 answerText[questionId]
 
             })
@@ -89,19 +97,23 @@ function QuestionPage() {
       const data =
         await response.json();
 
-      alert(data.message);
-      /* REMOVE QUESTION
-         AFTER SUBMIT */
+      alert(data.message || "Answer submitted!");
 
-      const updatedQuestions =
-        questions.filter(
-          (q) =>
-            q.id !== questionId
-        );
+      /* CLEAR THE ANSWER BOX AND REFRESH */
+      setAnswerText((prev) => {
+        const updated = { ...prev };
+        delete updated[questionId];
+        return updated;
+      });
 
-      setQuestions(
-        updatedQuestions
-      );
+      /* REFETCH TO SHOW STATE CHANGE (URQ → PAQ) */
+      const token2 = localStorage.getItem("token");
+      const headers2 = {};
+      if (token2) headers2["Authorization"] = `Bearer ${token2}`;
+
+      fetch("http://localhost:5000/questions", { headers: headers2 })
+        .then((res) => res.json())
+        .then((data) => setQuestions(data));
 
     } catch (error) {
 
@@ -150,18 +162,23 @@ function QuestionPage() {
         (question) => (
 
           <div
-            key={question.id}
+            key={question._id}
             className="question-card"
           >
 
-            {/* QUESTION */}
+            {/* QUESTION — new backend uses title, state, upvotes */}
 
             <h2>
-              {question.question}
+              {question.title}
             </h2>
 
             <p>
               {question.description}
+            </p>
+
+            <p style={{ fontSize: "12px", color: "#888" }}>
+              State: {question.state} &nbsp;|&nbsp;
+              Upvotes: {question.upvotes || 0}
             </p>
 
             {/* ANSWER BOX */}
@@ -175,7 +192,7 @@ function QuestionPage() {
 
               value={
                 answerText[
-                  question.id
+                  question._id
                 ] || ""
               }
 
@@ -185,7 +202,7 @@ function QuestionPage() {
 
                   ...answerText,
 
-                  [question.id]:
+                  [question._id]:
                     e.target.value
 
                 })
@@ -203,7 +220,7 @@ function QuestionPage() {
               onClick={() =>
 
                 submitAnswer(
-                  question.id
+                  question._id
                 )
 
               }
