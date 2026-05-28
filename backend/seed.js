@@ -10,7 +10,6 @@
 
 require("dotenv").config({ path: "./.env" });
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
 
 const User = require("./models/User");
 const Category = require("./models/Category");
@@ -19,6 +18,8 @@ const Answer = require("./models/Answer");
 
 const MONGO_URI = process.env.MONGODB_URI;
 
+// NOTE: pass plain-text passwords — the User model's pre-save hook
+// (bcrypt hash on isModified) runs on .create() and handles hashing.
 const ADMIN = {
   name: "Admin User",
   email: "admin@vic.edu",
@@ -59,8 +60,8 @@ async function seed() {
     if (existing) {
       console.log(`⏭  User already exists: ${userData.email}`);
     } else {
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
-      await User.create({ ...userData, password: hashedPassword });
+      // Pass plain password — User model's pre-save hook hashes it once
+      await User.create(userData);
       console.log(`✅ Created user: ${userData.email} / ${userData.password}`);
     }
   }
