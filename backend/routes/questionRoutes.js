@@ -1,56 +1,31 @@
 const express = require("express");
-
 const router = express.Router();
-
 const {
-
   getQuestions,
-
+  getQuestionById,
   addQuestion,
+  upvoteQuestion,
+  deleteQuestion,
+  getQuestionsByState,
+} = require("../controllers/questionController");
+const { auth } = require("../middleware/auth");
 
-  addAnswer,
+// Public: list + search all questions
+router.get("/", getQuestions);
 
-  verifyAnswer,upvoteQuestion , deleteQuestion
+// Public: get questions by lifecycle state
+router.get("/state/:state", getQuestionsByState);
 
-} = require(
-  "../controllers/questionController"
-);
+// Public: get single question with answers
+router.get("/:id", getQuestionById);
 
-/* GET */
+// Protected: submit new URQ
+router.post("/", auth, addQuestion);
 
-router.get(
-  "/",
-  getQuestions
-);
+// Protected: upvote question (urgency)
+router.put("/:id/upvote", auth, upvoteQuestion);
 
-/* POST QUESTION */
-
-router.post(
-  "/",
-  addQuestion
-);
-
-/* POST ANSWER */
-
-router.post(
-  "/:id/answer",
-  addAnswer
-);
-
-/* VERIFY ANSWER */
-
-router.put(
-  "/:questionId/verify/:answerId",
-  verifyAnswer
-);
-router.put(
-  "/:id/upvote",
-  upvoteQuestion
-);
-router.delete(
-  "/:id",
-  deleteQuestion
-);
-
+// Protected: delete question
+router.delete("/:id", auth, deleteQuestion);
 
 module.exports = router;

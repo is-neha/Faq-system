@@ -1,339 +1,195 @@
-const fs = require("fs");
+const Question = require("../models/Question");
+const Answer = require("../models/Answer");
+const Vote = require("../models/Vote");
+const Bookmark = require("../models/Bookmark");
+const User = require("../models/User");
 
-const path = require("path");
-
-const filePath = path.join(
-  __dirname,
-  "../data/questions.json"
-);
-
-/* GET QUESTIONS */
-
-const getQuestions = (req, res) => {
-
-  const data =
-    JSON.parse(
-      fs.readFileSync(filePath)
-    );
-
-  res.json(data);
+// Helper: Award reputation points
+const awardReputation = async (userId, points) => {
+  await User.findByIdAndUpdate(userId, { $inc: { reputation: points } });
 };
 
-/* ADD QUESTION */
-
-const addQuestion = (req, res) => {
-
-  const questions =
-    JSON.parse(
-      fs.readFileSync(filePath)
-    );
-
-  const newQuestion = {
-
-    id: Date.now(),
-
-    question:
-      req.body.question,
-
-    description:
-      req.body.description,
-
-    category:
-      req.body.category,
-
-    status: "unresolved",
-
-    upvotes: 0,
-
-    upvotedBy: [],
-
-    addedToFaq: false,
-
-    answers: []
-
-  };
-
-  questions.push(newQuestion);
-
-  fs.writeFileSync(
-
-    filePath,
-
-    JSON.stringify(
-      questions,
-      null,
-      2
-    )
-  );
-
-  res.json({
-
-    message:
-      "Question added successfully"
-
-  });
-};
-
-/* ADD ANSWER */
-
-const addAnswer = (req, res) => {
-
-  const questions =
-    JSON.parse(
-      fs.readFileSync(filePath)
-    );
-
-  const updatedQuestions =
-    questions.map((q) => {
-
-      if (
-        q.id == req.params.id
-      ) {
-
-        q.answers.push({
-
-          id: Date.now(),
-
-          text: req.body.text,
-
-          verified: false
-
-        });
-      }
-
-      return q;
-    });
-
-  fs.writeFileSync(
-
-    filePath,
-
-    JSON.stringify(
-      updatedQuestions,
-      null,
-      2
-    )
-  );
-
-  res.json({
-
-    message:
-      "Answer submitted"
-
-  });
-};
-
-/* VERIFY ANSWER */
-
-const verifyAnswer = (
-  req,
-  res
-) => {
-
-  const questions =
-    JSON.parse(
-      fs.readFileSync(filePath)
-    );
-
-  const updatedQuestions =
-    questions.map((q) => {
-
-      if (
-        q.id ==
-        req.params.questionId
-      ) {
-
-        /* QUESTION RESOLVED */
-
-        q.status = "resolved";
-
-        /* VERIFY ONLY
-           SELECTED ANSWER */
-
-        q.answers =
-          q.answers.map(
-            (answer) => ({
-
-              ...answer,
-
-              verified:
-                answer.id ==
-                req.params.answerId
-
-            })
-          );
-      }
-
-      return q;
-    });
-
-  fs.writeFileSync(
-
-    filePath,
-
-    JSON.stringify(
-      updatedQuestions,
-      null,
-      2
-    )
-  );
-
-  res.json({
-
-    message:
-      "Answer verified"
-
-  });
-};
-
-/* UPVOTE QUESTION */
-
-const upvoteQuestion = (
-  req,
-  res
-) => {
-
-  const questions =
-    JSON.parse(
-      fs.readFileSync(filePath)
-    );
-
-  const username =
-    req.body.username;
-
-  let alreadyUpvoted = false;
-
-  const updatedQuestions =
-    questions.map((q) => {
-
-      if (
-        q.id == req.params.id
-      ) {
-
-        /* CREATE ARRAY */
-
-        if (!q.upvotedBy) {
-
-          q.upvotedBy = [];
-        }
-
-        /* CHECK IF USER
-           ALREADY UPVOTED */
-
-        if (
-          q.upvotedBy.includes(
-            username
-          )
-        ) {
-
-          alreadyUpvoted = true;
-
-          return q;
-        }
-
-        /* ADD USER */
-
-        q.upvotedBy.push(
-          username
-        );
-
-        /* INCREASE COUNT */
-
-        q.upvotes =
-          (q.upvotes || 0) + 1;
-
-        /* FAQ THRESHOLD */
-
-        if (q.upvotes >= 5) {
-
-          q.addedToFaq = true;
-        }
-      }
-
-      return q;
-    });
-
-  fs.writeFileSync(
-
-    filePath,
-
-    JSON.stringify(
-      updatedQuestions,
-      null,
-      2
-    )
-  );
-
-  /* RESPONSE */
-
-  if (alreadyUpvoted) {
-
-    return res.json({
-
-      message:
-        "Already upvoted"
-
-    });
+// GET /questions — Search + filter by state
+const getQuestions = async (req, res) => {
+  try {
+    const { search, state, category, sort } = req.query;
+
+    let query = {};
+
+    // Full-text search
+    if (search) {
+      query.$text = { $search: search };
+    }
+
+    // Filter by lifecycle state
+    if (state && ["URQ", "PAQ", "FAQ"].includes(state)) {
+      query.state = state;
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (sort === "urgency") {
+      sortOption = { upvotes: -1, createdAt: -1 };
+    } else if (sort === "views") {
+      sortOption = { views: -1 };
+    }
+
+    const questions = await Question.find(query)
+      .populate("author", "name email reputation badges")
+      .populate("category", "name")
+      .sort(sortOption);
+
+    res.json(questions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
-
-  res.json({
-
-    message:
-      "Upvoted successfully"
-
-  });
 };
 
-/* DELETE QUESTION */
+// GET /questions/:id
+const getQuestionById = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id)
+      .populate("author", "name email reputation badges")
+      .populate("category", "name");
 
-const deleteQuestion = (
-  req,
-  res
-) => {
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
 
-  const questions =
-    JSON.parse(
-      fs.readFileSync(filePath)
-    );
+    // Increment view count
+    question.views += 1;
+    await question.save();
 
-  const filteredQuestions =
-    questions.filter(
+    // Get answers
+    const answers = await Answer.find({ questionId: question._id })
+      .populate("author", "name email reputation badges")
+      .sort({ upvotes: -1, createdAt: 1 });
 
-      (q) =>
-        q.id != req.params.id
-
-    );
-
-  fs.writeFileSync(
-
-    filePath,
-
-    JSON.stringify(
-      filteredQuestions,
-      null,
-      2
-    )
-  );
-
-  res.json({
-
-    message:
-      "Question deleted successfully"
-
-  });
+    res.json({ question, answers });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
+// POST /questions — Submit new URQ
+const addQuestion = async (req, res) => {
+  try {
+    const { title, description, category, tags } = req.body;
+
+    const question = new Question({
+      title,
+      description,
+      category,
+      tags: tags || [],
+      state: "URQ", // Always starts as Unresolved
+      author: req.user._id,
+    });
+
+    await question.save();
+
+    // Award reputation for asking
+    await awardReputation(req.user._id, 5);
+
+    await question.populate("author", "name email reputation badges");
+    await question.populate("category", "name");
+
+    res.status(201).json(question);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// PUT /questions/:id/upvote — Upvote question (urgency)
+const upvoteQuestion = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+
+    // Check for existing vote
+    const existingVote = await Vote.findOne({
+      userId: req.user._id,
+      targetId: question._id,
+      targetType: "Question",
+      voteType: "upvote",
+    });
+
+    if (existingVote) {
+      return res.status(400).json({ message: "Already upvoted this question" });
+    }
+
+    // Record the vote
+    await new Vote({
+      userId: req.user._id,
+      targetId: question._id,
+      targetType: "Question",
+      voteType: "upvote",
+    }).save();
+
+    question.upvotes += 1;
+    await question.save();
+
+    res.json({ message: "Question upvoted", upvotes: question.upvotes });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// DELETE /questions/:id
+const deleteQuestion = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+
+    // Only author or admin can delete
+    if (
+      question.author.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    await Question.findByIdAndDelete(req.params.id);
+    await Answer.deleteMany({ questionId: req.params.id });
+    await Vote.deleteMany({ targetId: req.params.id });
+    await Bookmark.deleteMany({ questionId: req.params.id });
+
+    res.json({ message: "Question deleted" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET /questions/state/:state — Get questions by lifecycle state
+const getQuestionsByState = async (req, res) => {
+  try {
+    const { state } = req.params;
+    if (!["URQ", "PAQ", "FAQ"].includes(state)) {
+      return res.status(400).json({ message: "Invalid state" });
+    }
+
+    const questions = await Question.find({ state })
+      .populate("author", "name email reputation badges")
+      .populate("category", "name")
+      .sort({ upvotes: -1, createdAt: -1 });
+
+    res.json(questions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 module.exports = {
-
   getQuestions,
-
+  getQuestionById,
   addQuestion,
-
-  addAnswer,
-
-  verifyAnswer,
-
-  upvoteQuestion
-  , deleteQuestion
+  upvoteQuestion,
+  deleteQuestion,
+  getQuestionsByState,
 };
